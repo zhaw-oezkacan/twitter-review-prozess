@@ -8,22 +8,24 @@
       <bpmn:lane id="Lane_0c9xdey" name="Mitarbeiter">
         <bpmn:flowNodeRef>TweetAnfrageEingereicht</bpmn:flowNodeRef>
         <bpmn:flowNodeRef>TweetAnfrageUeberarbeiten</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>DreiTageAbgelaufenMitarbeiter</bpmn:flowNodeRef>
       </bpmn:lane>
       <bpmn:lane id="Lane_1iir6w0" name="Kommunikationsabteilung">
         <bpmn:flowNodeRef>ExclusiveGateway_1qa6x80</bpmn:flowNodeRef>
         <bpmn:flowNodeRef>TweetAnfragePruefen</bpmn:flowNodeRef>
         <bpmn:flowNodeRef>MitarbeiterKuerzelGenerieren</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>DreiTageAbgelaufenKommunikationsAbteilung</bpmn:flowNodeRef>
       </bpmn:lane>
       <bpmn:lane id="Lane_1d0re29" name="Automatisch">
-        <bpmn:flowNodeRef>Pruefergebnis</bpmn:flowNodeRef>
         <bpmn:flowNodeRef>ExclusiveGateway_0fj9kmh</bpmn:flowNodeRef>
-        <bpmn:flowNodeRef>TweetAnfrageBehandelt</bpmn:flowNodeRef>
         <bpmn:flowNodeRef>TweetSenden</bpmn:flowNodeRef>
         <bpmn:flowNodeRef>MitarbeiterBenachrichtigen</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>Pruefergebnis</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>TweetAnfrageBehandelt</bpmn:flowNodeRef>
       </bpmn:lane>
     </bpmn:laneSet>
     <bpmn:sequenceFlow id="SequenceFlow_1vqcip2" sourceRef="TweetAnfrageEingereicht" targetRef="MitarbeiterKuerzelGenerieren" />
-    <bpmn:startEvent id="TweetAnfrageEingereicht" name="Tweet-Anfrage&#10;eingereicht" camunda:initiator="anfrageStellenderBenutzer">
+    <bpmn:startEvent id="TweetAnfrageEingereicht" name="Tweet-Anfrage&#10;eingereicht" camunda:asyncAfter="true" camunda:initiator="anfrageStellenderBenutzer">
       <bpmn:extensionElements>
         <camunda:formData>
           <camunda:formField id="email" label="E-Mail" type="string" />
@@ -32,38 +34,57 @@
       </bpmn:extensionElements>
       <bpmn:outgoing>SequenceFlow_1vqcip2</bpmn:outgoing>
     </bpmn:startEvent>
-    <bpmn:exclusiveGateway id="ExclusiveGateway_1qa6x80">
-      <bpmn:incoming>SequenceFlow_1t0lomx</bpmn:incoming>
-      <bpmn:incoming>SequenceFlow_01511e6</bpmn:incoming>
-      <bpmn:outgoing>SequenceFlow_0glyf4v</bpmn:outgoing>
-    </bpmn:exclusiveGateway>
-    <bpmn:exclusiveGateway id="Pruefergebnis" name="Prüf-&#10;ergebnis?" default="Genehmigt">
-      <bpmn:incoming>SequenceFlow_1rlwf8z</bpmn:incoming>
-      <bpmn:outgoing>Abgelehnt</bpmn:outgoing>
-      <bpmn:outgoing>Genehmigt</bpmn:outgoing>
-      <bpmn:outgoing>ZuUeberarbeiten</bpmn:outgoing>
-    </bpmn:exclusiveGateway>
-    <bpmn:exclusiveGateway id="ExclusiveGateway_0fj9kmh">
-      <bpmn:incoming>SequenceFlow_13w0jnd</bpmn:incoming>
-      <bpmn:incoming>Abgelehnt</bpmn:incoming>
-      <bpmn:outgoing>SequenceFlow_0akgqts</bpmn:outgoing>
-    </bpmn:exclusiveGateway>
-    <bpmn:endEvent id="TweetAnfrageBehandelt" name="Tweet-Anfrage&#10;behandelt">
-      <bpmn:incoming>SequenceFlow_0wkf2cr</bpmn:incoming>
-    </bpmn:endEvent>
-    <bpmn:task id="TweetSenden" name="Tweet senden">
+    <bpmn:userTask id="TweetAnfrageUeberarbeiten" name="Tweet-Anfrage überarbeiten" camunda:assignee="${anfrageStellenderBenutzer}">
       <bpmn:extensionElements>
-        <camunda:properties>
-          <camunda:property name="KPI-Ratio" value="Tweet Rejected" />
-        </camunda:properties>
+        <camunda:formData>
+          <camunda:formField id="tweetContent" label="Zu veröffentlichender Text" type="string" />
+          <camunda:formField id="checkResultComment" label="Hinweise für Mitarbeiter zum Prüfergebnis" type="string">
+            <camunda:properties>
+              <camunda:property id="disabled" />
+            </camunda:properties>
+          </camunda:formField>
+        </camunda:formData>
       </bpmn:extensionElements>
-      <bpmn:incoming>Genehmigt</bpmn:incoming>
-      <bpmn:outgoing>SequenceFlow_13w0jnd</bpmn:outgoing>
-    </bpmn:task>
-    <bpmn:task id="MitarbeiterBenachrichtigen" name="Mitarbeiter benachrichtigen">
-      <bpmn:incoming>SequenceFlow_0akgqts</bpmn:incoming>
-      <bpmn:outgoing>SequenceFlow_0wkf2cr</bpmn:outgoing>
-    </bpmn:task>
+      <bpmn:incoming>ZuUeberarbeiten</bpmn:incoming>
+      <bpmn:outgoing>SequenceFlow_1t0lomx</bpmn:outgoing>
+    </bpmn:userTask>
+    <bpmn:sequenceFlow id="SequenceFlow_1t0lomx" sourceRef="TweetAnfrageUeberarbeiten" targetRef="ExclusiveGateway_1qa6x80" />
+    <bpmn:sequenceFlow id="ZuUeberarbeiten" name="zu überarbeiten" sourceRef="Pruefergebnis" targetRef="TweetAnfrageUeberarbeiten">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression">#{checkResult == 'revisable'}</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    <bpmn:boundaryEvent id="DreiTageAbgelaufenMitarbeiter" name="3 Tage abgelaufen" attachedToRef="TweetAnfrageUeberarbeiten">
+      <bpmn:extensionElements>
+        <camunda:executionListener event="end">
+          <camunda:script scriptFormat="JavaScript">execution.setVariable("mailMainPart","Dieser konnte nicht veröffentlicht werden, weil Du nicht innert 3 Tagen diesen überarbeitet hast.");</camunda:script>
+        </camunda:executionListener>
+      </bpmn:extensionElements>
+      <bpmn:outgoing>SequenceFlow_1da32qt</bpmn:outgoing>
+      <bpmn:timerEventDefinition>
+        <bpmn:timeDuration xsi:type="bpmn:tFormalExpression">PT10S</bpmn:timeDuration>
+      </bpmn:timerEventDefinition>
+    </bpmn:boundaryEvent>
+    <bpmn:sequenceFlow id="SequenceFlow_1pf3ddu" sourceRef="DreiTageAbgelaufenKommunikationsAbteilung" targetRef="ExclusiveGateway_0fj9kmh" />
+    <bpmn:sequenceFlow id="SequenceFlow_1rlwf8z" sourceRef="TweetAnfragePruefen" targetRef="Pruefergebnis" />
+    <bpmn:sequenceFlow id="SequenceFlow_0glyf4v" sourceRef="ExclusiveGateway_1qa6x80" targetRef="TweetAnfragePruefen" />
+    <bpmn:sequenceFlow id="SequenceFlow_01511e6" sourceRef="MitarbeiterKuerzelGenerieren" targetRef="ExclusiveGateway_1qa6x80" />
+    <bpmn:boundaryEvent id="DreiTageAbgelaufenKommunikationsAbteilung" name="3 Tage abgelaufen" attachedToRef="TweetAnfragePruefen">
+      <bpmn:extensionElements>
+        <camunda:executionListener event="end">
+          <camunda:script scriptFormat="JavaScript">execution.setVariable("mailMainPart","Dieser konnte nicht veröffentlicht werden, weil er nicht durch die Kommunikationsabteilung innert 3 Tagen geprüft wurde.");</camunda:script>
+        </camunda:executionListener>
+      </bpmn:extensionElements>
+      <bpmn:outgoing>SequenceFlow_1pf3ddu</bpmn:outgoing>
+      <bpmn:timerEventDefinition>
+        <bpmn:timeDuration xsi:type="bpmn:tFormalExpression">PT10S</bpmn:timeDuration>
+      </bpmn:timerEventDefinition>
+    </bpmn:boundaryEvent>
+    <bpmn:scriptTask id="MitarbeiterKuerzelGenerieren" name="Mitarbeiter-Kürzel generieren" scriptFormat="JavaScript">
+      <bpmn:incoming>SequenceFlow_1vqcip2</bpmn:incoming>
+      <bpmn:outgoing>SequenceFlow_01511e6</bpmn:outgoing>
+      <bpmn:script>emailAdress = execution.getVariable("email");
+var alias = emailAdress.substring(0,4);
+execution.setVariable("alias",alias);</bpmn:script>
+    </bpmn:scriptTask>
     <bpmn:userTask id="TweetAnfragePruefen" name="Tweet-Anfrage prüfen" camunda:candidateGroups="kommunikationsabteilung">
       <bpmn:extensionElements>
         <camunda:formData>
@@ -80,41 +101,48 @@
       <bpmn:incoming>SequenceFlow_0glyf4v</bpmn:incoming>
       <bpmn:outgoing>SequenceFlow_1rlwf8z</bpmn:outgoing>
     </bpmn:userTask>
-    <bpmn:userTask id="TweetAnfrageUeberarbeiten" name="Tweet-Anfrage überarbeiten" camunda:assignee="${anfrageStellenderBenutzer}">
-      <bpmn:extensionElements>
-        <camunda:formData>
-          <camunda:formField id="tweetContent" label="Zu veröffentlichender Text" type="string" />
-          <camunda:formField id="checkResultComment" label="Hinweise für Mitarbeiter zum Prüfergebnis" type="string">
-            <camunda:properties>
-              <camunda:property id="disabled" />
-            </camunda:properties>
-          </camunda:formField>
-        </camunda:formData>
-      </bpmn:extensionElements>
-      <bpmn:incoming>ZuUeberarbeiten</bpmn:incoming>
-      <bpmn:outgoing>SequenceFlow_1t0lomx</bpmn:outgoing>
-    </bpmn:userTask>
-    <bpmn:sequenceFlow id="SequenceFlow_1t0lomx" sourceRef="TweetAnfrageUeberarbeiten" targetRef="ExclusiveGateway_1qa6x80" />
-    <bpmn:sequenceFlow id="SequenceFlow_0glyf4v" sourceRef="ExclusiveGateway_1qa6x80" targetRef="TweetAnfragePruefen" />
-    <bpmn:sequenceFlow id="SequenceFlow_1rlwf8z" sourceRef="TweetAnfragePruefen" targetRef="Pruefergebnis" />
+    <bpmn:exclusiveGateway id="ExclusiveGateway_1qa6x80">
+      <bpmn:incoming>SequenceFlow_1t0lomx</bpmn:incoming>
+      <bpmn:incoming>SequenceFlow_01511e6</bpmn:incoming>
+      <bpmn:outgoing>SequenceFlow_0glyf4v</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    <bpmn:sequenceFlow id="SequenceFlow_0wkf2cr" sourceRef="MitarbeiterBenachrichtigen" targetRef="TweetAnfrageBehandelt" />
+    <bpmn:sequenceFlow id="SequenceFlow_0akgqts" sourceRef="ExclusiveGateway_0fj9kmh" targetRef="MitarbeiterBenachrichtigen" />
+    <bpmn:sequenceFlow id="SequenceFlow_13w0jnd" sourceRef="TweetSenden" targetRef="ExclusiveGateway_0fj9kmh" />
+    <bpmn:sequenceFlow id="Genehmigt" name="genehmigt" sourceRef="Pruefergebnis" targetRef="TweetSenden" />
     <bpmn:sequenceFlow id="Abgelehnt" name="abgelehnt" sourceRef="Pruefergebnis" targetRef="ExclusiveGateway_0fj9kmh">
       <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression">#{checkResult == 'rejected'}</bpmn:conditionExpression>
     </bpmn:sequenceFlow>
-    <bpmn:sequenceFlow id="Genehmigt" name="genehmigt" sourceRef="Pruefergebnis" targetRef="TweetSenden" />
-    <bpmn:sequenceFlow id="ZuUeberarbeiten" name="zu überarbeiten" sourceRef="Pruefergebnis" targetRef="TweetAnfrageUeberarbeiten">
-      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression">#{checkResult == 'revisable'}</bpmn:conditionExpression>
-    </bpmn:sequenceFlow>
-    <bpmn:sequenceFlow id="SequenceFlow_13w0jnd" sourceRef="TweetSenden" targetRef="ExclusiveGateway_0fj9kmh" />
-    <bpmn:sequenceFlow id="SequenceFlow_0akgqts" sourceRef="ExclusiveGateway_0fj9kmh" targetRef="MitarbeiterBenachrichtigen" />
-    <bpmn:sequenceFlow id="SequenceFlow_0wkf2cr" sourceRef="MitarbeiterBenachrichtigen" targetRef="TweetAnfrageBehandelt" />
-    <bpmn:sequenceFlow id="SequenceFlow_01511e6" sourceRef="MitarbeiterKuerzelGenerieren" targetRef="ExclusiveGateway_1qa6x80" />
-    <bpmn:scriptTask id="MitarbeiterKuerzelGenerieren" name="Mitarbeiter-Kürzel generieren" scriptFormat="JavaScript">
-      <bpmn:incoming>SequenceFlow_1vqcip2</bpmn:incoming>
-      <bpmn:outgoing>SequenceFlow_01511e6</bpmn:outgoing>
-      <bpmn:script>emailAdress = execution.getVariable("email");
-var alias = emailAdress.substring(0,4);
-execution.setVariable("alias",alias);</bpmn:script>
-    </bpmn:scriptTask>
+    <bpmn:sendTask id="MitarbeiterBenachrichtigen" name="Mitarbeiter benachrichtigen" camunda:delegateExpression="#{notifyEmployeeAdapter}">
+      <bpmn:incoming>SequenceFlow_0akgqts</bpmn:incoming>
+      <bpmn:outgoing>SequenceFlow_0wkf2cr</bpmn:outgoing>
+    </bpmn:sendTask>
+    <bpmn:serviceTask id="TweetSenden" name="Tweet senden" camunda:asyncBefore="true" camunda:delegateExpression="#{sendTweetAdapter}">
+      <bpmn:extensionElements>
+        <camunda:properties>
+          <camunda:property name="KPI-Ratio" value="Tweet Rejected" />
+        </camunda:properties>
+      </bpmn:extensionElements>
+      <bpmn:incoming>Genehmigt</bpmn:incoming>
+      <bpmn:outgoing>SequenceFlow_13w0jnd</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:endEvent id="TweetAnfrageBehandelt" name="Tweet-Anfrage&#10;behandelt">
+      <bpmn:incoming>SequenceFlow_0wkf2cr</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:exclusiveGateway id="ExclusiveGateway_0fj9kmh">
+      <bpmn:incoming>SequenceFlow_13w0jnd</bpmn:incoming>
+      <bpmn:incoming>Abgelehnt</bpmn:incoming>
+      <bpmn:incoming>SequenceFlow_1pf3ddu</bpmn:incoming>
+      <bpmn:incoming>SequenceFlow_1da32qt</bpmn:incoming>
+      <bpmn:outgoing>SequenceFlow_0akgqts</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    <bpmn:exclusiveGateway id="Pruefergebnis" name="Prüf-&#10;ergebnis?">
+      <bpmn:incoming>SequenceFlow_1rlwf8z</bpmn:incoming>
+      <bpmn:outgoing>Abgelehnt</bpmn:outgoing>
+      <bpmn:outgoing>Genehmigt</bpmn:outgoing>
+      <bpmn:outgoing>ZuUeberarbeiten</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    <bpmn:sequenceFlow id="SequenceFlow_1da32qt" sourceRef="DreiTageAbgelaufenMitarbeiter" targetRef="ExclusiveGateway_0fj9kmh" />
   </bpmn:process>
   <bpmndi:BPMNDiagram id="BPMNDiagram_1">
     <bpmndi:BPMNPlane id="BPMNPlane_1" bpmnElement="Collaboration_1y44tdo">
@@ -205,12 +233,6 @@ execution.setVariable("alias",alias);</bpmn:script>
       <bpmndi:BPMNShape id="Lane_1d0re29_di" bpmnElement="Lane_1d0re29">
         <dc:Bounds x="32" y="284" width="1070" height="234" />
       </bpmndi:BPMNShape>
-      <bpmndi:BPMNShape id="Task_19ckxfd_di" bpmnElement="TweetSenden">
-        <dc:Bounds x="623" y="418" width="100" height="80" />
-      </bpmndi:BPMNShape>
-      <bpmndi:BPMNShape id="Task_1ighy8a_di" bpmnElement="MitarbeiterBenachrichtigen">
-        <dc:Bounds x="868" y="311" width="100" height="80" />
-      </bpmndi:BPMNShape>
       <bpmndi:BPMNShape id="UserTask_1cwn67f_di" bpmnElement="TweetAnfragePruefen">
         <dc:Bounds x="372" y="172" width="100" height="80" />
       </bpmndi:BPMNShape>
@@ -231,6 +253,35 @@ execution.setVariable("alias",alias);</bpmn:script>
       <bpmndi:BPMNShape id="ScriptTask_0li4njo_di" bpmnElement="MitarbeiterKuerzelGenerieren">
         <dc:Bounds x="145" y="172" width="100" height="80" />
       </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="ServiceTask_1u1yjdx_di" bpmnElement="TweetSenden">
+        <dc:Bounds x="623" y="418" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="SendTask_1kbjvu2_di" bpmnElement="MitarbeiterBenachrichtigen">
+        <dc:Bounds x="868" y="311" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="BoundaryEvent_10zrjdu_di" bpmnElement="DreiTageAbgelaufenKommunikationsAbteilung">
+        <dc:Bounds x="371" y="234" width="36" height="36" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="400" y="256" width="55" height="27" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge id="SequenceFlow_1pf3ddu_di" bpmnElement="SequenceFlow_1pf3ddu">
+        <di:waypoint x="389" y="270" />
+        <di:waypoint x="389" y="509" />
+        <di:waypoint x="847" y="509" />
+        <di:waypoint x="798" y="370" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNShape id="BoundaryEvent_1dqmdmd_di" bpmnElement="DreiTageAbgelaufenMitarbeiter">
+        <dc:Bounds x="677" y="23" width="36" height="36" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="700" y="52" width="55" height="27" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge id="SequenceFlow_1da32qt_di" bpmnElement="SequenceFlow_1da32qt">
+        <di:waypoint x="713" y="41" />
+        <di:waypoint x="792" y="41" />
+        <di:waypoint x="792" y="326" />
+      </bpmndi:BPMNEdge>
     </bpmndi:BPMNPlane>
   </bpmndi:BPMNDiagram>
 </bpmn:definitions>
